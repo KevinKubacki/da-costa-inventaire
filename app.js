@@ -69,7 +69,7 @@ function render(top) {
   var y = window.scrollY;
   var fn = SCREENS[VIEW.r] || SCREENS.home;
   if (VIEW.r !== 'boot' && VIEW.r !== 'login' && !me()) { VIEW = { r: 'login', p: {} }; fn = SCREENS.login; saveView(); }
-  root.innerHTML = fn(VIEW.p);
+  root.innerHTML = (IS_TEST ? '<div class="testtag" aria-hidden="true">TEST</div>' : '') + fn(VIEW.p);
   PENDING_RENDER = false;
   window.scrollTo(0, top ? 0 : y);
   if (AFTER.length) { var a = AFTER; AFTER = []; a.forEach(function (f) { try { f(); } catch (e) {} }); }
@@ -969,7 +969,7 @@ SCREENS.reglages = function () {
     (patron && SYNC.sheetUrl ? '<a class="btn light" href="' + esc(SYNC.sheetUrl) + '" target="_blank" rel="noopener">Ouvrir le Sheet</a>' : '<button class="btn light" data-a="retry">Synchroniser</button>') + '</div>' +
     '<p id="cnx" style="font-size:13px;color:var(--muted);margin:8px 0 0"></p></div>';
   html += '<div class="list">' + '<button class="row" data-a="logout2">' + ic('logout') + '<div class="grow"><span class="t">Changer d\'utilisateur</span><span class="s">Connecté : ' + esc(u.nom) + '</span></div></button></div>' +
-    '<p style="text-align:center;color:var(--muted);font-size:13px;margin-top:20px">Stock Da Costa · appli ' + APP_VERSION + (SYNC.version ? ' · script ' + esc(SYNC.version) : '') + '</p>';
+    '<p style="text-align:center;color:var(--muted);font-size:13px;margin-top:20px">Stock Da Costa' + (IS_TEST ? ' · <b style="color:#B45309">VERSION TEST</b>' : '') + ' · appli ' + APP_VERSION + (SYNC.version ? ' · script ' + esc(SYNC.version) : '') + '</p>';
   html += '</div></div>';
   return html;
 };
@@ -1139,7 +1139,7 @@ A.delFam = function (d) { var f = D().fam[d.id]; ask({ title: 'Supprimer « ' + 
   if (LOADED) { VIEW = { r: me() ? 'home' : 'login', p: {} }; saveView(); }
   render(true);
   startSync();
-  if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  if ('serviceWorker' in navigator && window.isSecureContext) {
     var had = !!navigator.serviceWorker.controller;
     navigator.serviceWorker.register('sw.js').then(function (reg) {
       document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') reg.update().catch(function () {}); });

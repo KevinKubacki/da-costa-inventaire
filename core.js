@@ -1,14 +1,16 @@
 /* Stock Da Costa — données locales, synchronisation automatique, calculs */
 'use strict';
 
-var APP_VERSION = '1.0';
+var APP_VERSION = '1.2';
 var CFG = window.STOCK_CONFIG || {};
+var IS_TEST = CFG.test === true;                       // version de test de Kevin (config.js : test: true)
+var NS = IS_TEST ? 'stock-test:' : 'stock:';            // mémoire du téléphone séparée entre test et officielle
 var TABLES = ['Reglages', 'Utilisateurs', 'Fournisseurs', 'Familles', 'Produits', 'Prix', 'Mouvements', 'Inventaires', 'Comptages'];
 
 var LS = {
-  get: function (k, d) { try { var v = localStorage.getItem('stock:' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
-  set: function (k, v) { try { localStorage.setItem('stock:' + k, JSON.stringify(v)); } catch (e) {} },
-  del: function (k) { try { localStorage.removeItem('stock:' + k); } catch (e) {} }
+  get: function (k, d) { try { var v = localStorage.getItem(NS + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set: function (k, v) { try { localStorage.setItem(NS + k, JSON.stringify(v)); } catch (e) {} },
+  del: function (k) { try { localStorage.removeItem(NS + k); } catch (e) {} }
 };
 
 function uid(p) { return (p || '') + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
@@ -131,6 +133,7 @@ function flush() {
   }).catch(function (e) {
     SYNC.busy = false;
     SYNC.err = e.message; SYNC.errCode = e.code || ''; SYNC.errAt = Date.now();
+    if (e.code === 'CODE') SYNC.err = "Code d'accès refusé. L'appli envoie le code « " + CFG.code + " » : il doit être écrit exactement pareil dans CODE_ACCES du script, puis le script redéployé (Gérer les déploiements › Nouvelle version).";
     var d = e.code === 'BUSY' ? 1500 : RETRY[Math.min(SYNC.retry, RETRY.length - 1)];
     SYNC.retry++;
     scheduleFlush(d);
