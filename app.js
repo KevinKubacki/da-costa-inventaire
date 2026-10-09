@@ -8,6 +8,10 @@ var IC = {
   stock: '<path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 12l9 4 9-4"/><path d="M3 17l9 4 9-4"/>',
   bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10 21h4"/>',
   inv: '<path d="M9 4h6l1 2h3v15H5V6h3z"/><path d="M9 12l2 2 4-4"/>',
+  eye: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6"/>',
+  stop: '<rect x="6" y="6" width="12" height="12" rx="2"/>',
+  replay: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M10 9l5 3-5 3z"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>', check: '<path d="M5 12l5 5 9-10"/>',
   x: '<path d="M6 6l12 12M18 6L6 18"/>', edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/>',
   trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
@@ -27,6 +31,7 @@ var IC = {
   history: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 3"/>',
   star: '<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>',
   chev: '<path d="M9 5l7 7-7 7"/>', folder: '<path d="M3 6h6l2 2h10v11H3z"/>', box: '<path d="M3 7l9-4 9 4v10l-9 4-9-4z"/><path d="M3 7l9 4 9-4M12 11v10"/>',
+  camera: '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
   euro: '<path d="M18 6a7 7 0 1 0 0 12"/><path d="M4 10h10M4 14h10"/>', install: '<path d="M12 3v12M7 10l5 5 5-5"/><rect x="4" y="18" width="16" height="3" rx="1"/>'
 };
 function ic(n, cls) { return '<svg class="i ' + (cls || '') + '" viewBox="0 0 24 24" aria-hidden="true">' + (IC[n] || '') + '</svg>'; }
@@ -63,14 +68,25 @@ window.addEventListener('popstate', function (e) {
 });
 
 /* ================= rendu ================= */
+/** Les barres marquées data-under-head restent collées juste sous l'en-tête (hauteur mesurée). */
+function stickUnderHead() {
+  var h = document.querySelector('.head'), els = document.querySelectorAll('[data-under-head]');
+  if (!h || !els.length) return;
+  var top = Math.round(h.getBoundingClientRect().height);
+  for (var i = 0; i < els.length; i++) els[i].style.top = top + 'px';
+}
+window.addEventListener('resize', function () { stickUnderHead(); });
 function isTyping() { var a = document.activeElement; return a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && !SHEET; }
 
 function render(top) {
   var y = window.scrollY;
   var fn = SCREENS[VIEW.r] || SCREENS.home;
-  if (VIEW.r !== 'boot' && VIEW.r !== 'login' && !me()) { VIEW = { r: 'login', p: {} }; fn = SCREENS.login; saveView(); }
+  if (VIEW.r !== 'boot' && VIEW.r !== 'login' && VIEW.r !== 'acces' && !me()) { VIEW = { r: 'login', p: {} }; fn = SCREENS.login; saveView(); }
+  document.body.classList.toggle('has-bar', false);
   root.innerHTML = (IS_TEST ? '<div class="testtag" aria-hidden="true">TEST</div>' : '') + fn(VIEW.p);
+  stickUnderHead();
   PENDING_RENDER = false;
+  document.body.classList.toggle('has-bar', !!root.querySelector('.bottom-bar'));
   window.scrollTo(0, top ? 0 : y);
   if (AFTER.length) { var a = AFTER; AFTER = []; a.forEach(function (f) { try { f(); } catch (e) {} }); }
 }
@@ -78,6 +94,7 @@ var AFTER = [];
 
 window.onDataChange = function (local) {
   if (local) return;
+  migrateNames();
   if (VIEW.r === 'boot') { route0(); return; }
   if (isTyping() || SHEET) { PENDING_RENDER = true; return; }
   render(false);
@@ -95,11 +112,22 @@ function route0() {
   saveView(); render(true);
 }
 
+/** Une seule fois : met les noms des produits existants au même format (MAJUSCULES). Fait par le téléphone du patron. */
+function migrateNames() {
+  if (!LOADED || !isPatron() || D().reg.nomsMaj === '1') return;
+  var ops = [];
+  D().allProds.forEach(function (p) { var n = upName(p.nom); if (n && n !== p.nom) ops.push(put('Produits', { id: p.id, nom: n })); });
+  ops.push(put('Reglages', { id: 'nomsMaj', valeur: '1' }));
+  commit(ops);
+}
+
 /* ================= briques d'écran ================= */
 function head(o) {
-  return '<header class="head ' + (o.cls || '') + '">' +
+  var h = '<header class="head ' + (o.cls || '') + '">' +
     '<div class="head-row">' + (o.back !== false ? '<button class="icon-btn back" data-a="' + (o.backAct || 'back') + '" aria-label="Retour">' + ic('back') + '</button>' : '') +
     '<h1>' + o.title + '</h1>' + (o.right || '') + '</div>' + (o.sub ? '<div class="sub">' + o.sub + '</div>' : '') + (o.extra || '') + '</header>';
+  // o.below : bandeau (filtres) qui reste collé sous l'en-tête quand on fait défiler
+  return o.below ? '<div class="stick">' + h + '<div class="stick-below">' + o.below + '</div></div>' : h;
 }
 function nav(cur) {
   var M = D(), n = M.alertes.length;
@@ -190,6 +218,7 @@ function openSheet(html, opt) {
   ov.addEventListener('click', function (e) { if (e.target === ov) closeSheet(); });
   document.body.appendChild(ov);
   SHEET = { el: ov, onClose: opt && opt.onClose };
+  var tst = document.querySelector('.toast'); if (tst) tst.classList.add('top');   // ne pas cacher les boutons de la fenêtre
   try { history.pushState({ r: VIEW.r, p: VIEW.p, sheet: 1 }, ''); } catch (e) {}
   var f = ov.querySelector('[autofocus]'); if (f) setTimeout(function () { f.focus(); if (f.select) f.select(); }, 60);
   return ov;
@@ -234,7 +263,7 @@ function askNumber(o) {
 var TOAST_T = null;
 function toast(title, sub, undo) {
   var old = document.querySelector('.toast'); if (old) old.remove();
-  var t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role', 'status');
+  var t = document.createElement('div'); t.className = 'toast' + (SHEET ? ' top' : ''); t.setAttribute('role', 'status');
   t.innerHTML = ic('check') + '<div class="grow"><b>' + esc(title) + '</b>' + (sub ? '<span>' + esc(sub) + '</span>' : '') + '</div>' + (undo ? '<button>Annuler</button>' : '');
   if (undo) t.querySelector('button').onclick = function () { t.remove(); undo(); };
   document.body.appendChild(t);
@@ -261,6 +290,22 @@ A.retry = function () { flush(); render(false); };
 /* ================= démarrage / connexion ================= */
 var SCREENS = {};
 
+/* V1.19 : téléphone sans accès (pas de lien d'invitation, ou accès coupé) */
+SCREENS.acces = function (p) {
+  return '<div class="login"><img class="logo" src="icons/logo-blanc.png" alt="EURL Da Costa, couverture zinguerie">' +
+    '<h1>Accès à l\'appli</h1><p>Ouvre le <b>lien d\'invitation</b> que le patron t\'a envoyé (WhatsApp ou SMS) : il te connecte tout seul.</p>' +
+    '<p style="font-size:13px;margin-top:22px">Administrateur :</p><div class="field adm-field" style="max-width:320px;margin:0 auto;position:relative"><input id="adm" class="inp" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Code administrateur" style="text-align:center;color:#1B1A3A;background:#fff;padding-right:52px"><button type="button" class="adm-eye" data-a="admEye" aria-label="Voir le code">👁</button></div>' +
+    '<button class="btn light" style="max-width:320px;margin:10px auto 0" data-a="accesOk">Valider</button><div class="err" id="accErr">' + esc(p.err || '') + '</div></div>';
+};
+A.admEye = function () { var i = document.getElementById('adm'); if (!i) return; i.type = i.type === 'password' ? 'text' : 'password'; i.focus(); };
+A.accesOk = function () {
+  var v = (document.getElementById('adm').value || '').trim(); if (!v) return;
+  call('ping', [v], 20000).then(function () {
+    LS.set('cle', v); CFG.code = v; SYNC.err = ''; SYNC.errCode = '';
+    go('boot', {}, { replace: true }); flush();
+  }).catch(function () { var e = document.getElementById('accErr'); if (e) e.textContent = 'Code refusé.'; });
+};
+window.onAccesCoupe = function () { if (VIEW.r !== 'acces') { ME = null; go('acces', {}, { replace: true }); } };
 SCREENS.boot = function () {
   var err = SYNC.err && !SYNC.busy;
   return '<div class="loading"><img src="icons/logo-blanc.png" alt="EURL Da Costa">' +
@@ -288,7 +333,8 @@ SCREENS.login = function (p) {
       (step === 'enter' ? '<p style="margin-top:8px;font-size:13px">Code oublié ? ' + (u.role === 'patron' ? 'Efface la case « pin » de ta ligne dans l\'onglet Utilisateurs du Google Sheet.' : 'Demande au patron de le réinitialiser (Réglages › Équipe).') + '</p>' : '') +
       '</div>';
   }
-  var users = M.usersActifs;
+  // V1.19 : un téléphone invité par lien ne peut entrer QUE sous le nom de la personne invitée
+  var users = SYNC.moi ? M.usersActifs.filter(function (u) { return u.id === SYNC.moi; }) : M.usersActifs;
   return '<div class="login"><img class="logo" src="icons/logo-blanc.png" alt="EURL Da Costa, couverture zinguerie">' +
     '<h1>Qui es-tu ?</h1><p>Choix fait une seule fois sur ce téléphone</p>' +
     users.map(function (u) {
@@ -326,20 +372,21 @@ A.pinKey = function (d) {
   }
   render(false);
 };
-function loginAs(id) { ME = id; LS.set('user', id); go('home', {}, { replace: true }); }
+function loginAs(id) { ME = id; LS.set('user', id); migrateNames(); go('home', {}, { replace: true }); if (window.afterLogin) window.afterLogin(); }
 
 /* ================= accueil ================= */
 SCREENS.home = function () {
   var M = D(), u = me(), patron = isPatron();
   var d = new Date();
   var recent = M.moves.filter(function (m) { return m.type !== 'depart' || m.qui; }).slice(0, 5);
-  var html = '<div class="screen"><header class="head home-head"><div class="brand"><img src="icons/toit-blanc.png" alt="">' +
+  var html = '<div class="screen"><div class="home-fixed"><header class="head home-head"><div class="brand"><img src="icons/toit-blanc.png" alt="">' +
     '<div><b>' + esc((M.reg.entreprise || 'Da Costa').replace(/^EURL\s+/i, '').toUpperCase()) + '</b><span>Stock atelier</span></div>' +
-    '<button class="avatar" data-a="menu" aria-label="Menu">' + initial(u.nom) + '</button></div>' +
+    '<button class="gear" data-a="go" data-r="reglages" aria-label="Réglages">' + ic('gear') + '</button></div>' +
     '<div class="hello">Salut ' + esc(u.nom) + '</div><div class="sub">' + JOURS[d.getDay()] + ' ' + d.getDate() + ' ' + MOIS_LONG[d.getMonth()] + ' · qu\'est-ce que tu fais ?</div></header>' +
     '<div class="big-actions"><button class="big out" data-a="startMv" data-m="S">' + ic('minus') + '<div><b>SORTIE</b><span>Je prends du matériel</span></div></button>' +
+    '<button class="mic-home" data-a="vxOpen" aria-label="Parler à l\'appli"><span class="mh-ring"></span>' + ic('mic') + '</button>' +
     '<button class="big in" data-a="startMv" data-m="E">' + ic('plus') + '<div><b>ENTRÉE</b><span>Je range une livraison</span></div></button></div>' +
-    syncBar() + '<div class="scroll">' +
+    syncBar() + '</div><div class="scroll">' +
     '<div class="tiles"><button class="tile" data-a="nav" data-r="stock"><b>' + M.prods.length + '</b><span>produits</span></button>' +
     '<button class="tile ' + (M.alertes.length ? 'warn' : '') + '" data-a="nav" data-r="commandes"><b>' + M.alertes.length + '</b><span>à commander</span></button>' +
     '<button class="tile ' + (M.zeros.length ? 'bad' : '') + '" data-a="stockFilter" data-f="zero"><b>' + M.zeros.length + '</b><span>à zéro</span></button></div>';
@@ -379,8 +426,8 @@ SCREENS.stock = function (p) {
   var extra = [['alert', 'À commander'], ['zero', 'À zéro']];
   if (patron) extra.push(['noprice', 'Sans prix']);
   return '<div class="screen">' + head({ back: false, title: 'Stock', right: '<span class="sub" id="pcount">' + list.length + ' produit' + (list.length > 1 ? 's' : '') + '</span>',
-    extra: searchBox('q', 'Chercher : coude, Ø100, volige, CMO…', p.q) }) + syncBar() +
-    '<div class="scroll" style="padding-top:0">' + famChips(p.f, 'filt', extra) + '<div class="list" id="plist">' + prodList(list, 'openProd') + '</div></div>' +
+    extra: searchBox('q', 'Chercher : coude, Ø100, volige, CMO…', p.q), below: famChips(p.f, 'filt', extra) }) + syncBar() +
+    '<div class="scroll" style="padding-top:4px">' + valeurBanner() + '<div class="list" id="plist">' + prodList(list, 'openProd') + '</div></div>' +
     (patron ? '<button class="fab" data-a="newProd">' + ic('plus') + 'Produit</button>' : '') + nav('stock') + '</div>';
 };
 function prodList(list, act) {
@@ -416,10 +463,11 @@ SCREENS.pick = function (p) {
   return '<div class="screen">' + head({ cls: S ? 'red' : 'green', title: 'Quel produit ?', backAct: 'pickBack',
     right: p.done ? '<button class="small-btn" data-a="pickDone" style="background:#fff;border:0;color:' + (S ? 'var(--red)' : 'var(--green)') + ';height:44px;font-size:16px">Terminé</button>' : '',
     extra: '<div class="seg"><button class="' + (S ? 'on' : '') + '" data-a="pickMode" data-m="S">− Sortie</button><button class="' + (S ? '' : 'on') + '" data-a="pickMode" data-m="E">+ Entrée</button></div>' +
-      searchBox('q', 'Chercher un produit…', p.q) }) + syncBar() +
-    '<div class="scroll">' + (p.done ? '<div class="done-banner">' + ic('check') + '<span>' + esc(p.done) + '<br><span style="font-weight:500">Un autre produit ? Sinon appuie sur Terminé.</span></span></div>' : '') +
+      searchBox('q', 'Chercher un produit…', p.q), below: famChips(p.f, 'filt') }) + syncBar() +
+    '<div class="scroll">' + (!S && !p.done ? '<button class="row" style="border:2px solid var(--green);margin-bottom:12px" data-a="go" data-r="facture"><span class="mv in" style="width:44px;height:44px">' + ic('camera') + '</span><div class="grow"><span class="t">Ranger une facture</span><span class="s">Photo ou PDF : l\'appli lit les lignes pour toi</span></div>' + ic('chev') + '</button>' : '') +
+    (p.done ? '<div class="done-banner">' + ic('check') + '<span>' + esc(p.done) + '<br><span style="font-weight:500">Un autre produit ? Sinon appuie sur Terminé.</span></span></div>' : '') +
     (mine.length && !p.q && !p.f ? '<div id="recents"><div class="sec-title" style="margin-top:0"><span>Mes derniers produits</span></div><div class="list">' + mine.map(function (x) { return prodRow(x, 'pickProd'); }).join('') + '</div><div class="sec-title"><span>Tous les produits</span></div></div>' : '') +
-    famChips(p.f, 'filt') + '<div class="list" id="plist">' + prodList(list, 'pickProd') + '</div></div></div>';
+    '<div class="list" id="plist">' + prodList(list, 'pickProd') + '</div></div></div>';
 };
 A.pickMode = function (d) { VIEW.p.mode = d.m; VIEW.p.done = ''; saveView(); render(false); };
 A.pickBack = function () { back(); };
@@ -618,7 +666,7 @@ var UNITES = ['pièce', 'mètre', 'ml', 'm²', 'boîte', 'paquet', 'rouleau', 'k
 SCREENS.edit = function (p) {
   var M = D(), f = p.f; if (!f) { go('stock', {}, { replace: true }); return ''; }
   var html = '<div class="screen">' + head({ title: f.isNew ? 'Nouveau produit' : 'Modifier le produit' }) + '<div class="scroll nonav">' +
-    '<div class="field"><label for="fnom">Nom du produit</label><input id="fnom" class="inp" data-i="f" data-k="nom" autocomplete="off" placeholder="ex. Crochet de gouttière Ø33 inox" value="' + esc(f.nom) + '"></div>' +
+    '<div class="field"><label for="fnom">Nom du produit <span class="help">(enregistré en MAJUSCULES)</span></label><input id="fnom" class="inp" style="text-transform:uppercase" data-i="f" data-k="nom" autocomplete="off" placeholder="EX. CROCHET DE GOUTTIÈRE Ø33 INOX" value="' + esc(f.nom) + '"></div>' +
     '<div class="field"><span class="flabel">Famille</span><div class="chips wrap">' + M.fams.map(function (x) {
       return '<button class="chip ' + (f.famille === x.id ? 'on' : '') + '" data-a="fSet" data-k="famille" data-v="' + x.id + '">' + esc(x.nom) + '</button>'; }).join('') +
     '<button class="chip" data-a="newFam">+ Nouvelle</button></div></div>' +
@@ -683,7 +731,7 @@ A.newFam = function () {
 };
 A.saveProd = function () {
   var f = VIEW.p.f, M = D();
-  var nom = (f.nom || '').trim();
+  var nom = upName(f.nom);
   if (!nom) { toast('Il manque le nom du produit'); var el = document.getElementById('fnom'); if (el) el.focus(); return; }
   var lines = f.lines.filter(function (l) { return l.fournisseur; });
   var main = lines.filter(function (l) { return l.main; })[0] || lines[0];
@@ -748,9 +796,8 @@ SCREENS.commandes = function (p) {
     var f = M.four[cur];
     if (patron && tot > 0) html += '<div class="hint" style="margin-top:12px">Montant estimé : <b>' + fe(tot) + ' HT</b>' + (noPrice ? ' (+ ' + noPrice + ' produit' + (noPrice > 1 ? 's' : '') + ' sans prix)' : '') + '</div>';
     html += '<div class="sec-title"><span>Envoyer la commande' + (f ? ' à ' + esc(f.nom) : '') + '</span></div>';
-    html += '<div class="contact-actions"><button data-a="cmdSend" data-how="mail" class="' + (f && f.email ? '' : '') + '">' + ic('mail') + 'Mail</button>' +
-      '<button data-a="cmdSend" data-how="wa">' + ic('chat') + 'WhatsApp</button><button data-a="cmdSend" data-how="copy">' + ic('copy') + 'Copier</button></div>';
-    if (f && !f.email && !f.tel) html += '<p style="font-size:13px;color:var(--muted);margin:0">Ajoute le mail ou le téléphone de ' + esc(f.nom) + ' dans Réglages › Fournisseurs pour l\'envoyer directement.</p>';
+    html += '<button class="btn" data-a="cmdSend">' + ic('mail') + 'Voir et envoyer le message</button>';
+    if (f && !f.email && !f.tel) html += '<p style="font-size:13px;color:var(--muted);margin:8px 0 0">Ajoute le mail ou le téléphone de ' + esc(f.nom) + ' dans Réglages › Fournisseurs pour l\'envoyer directement.</p>';
     p._cur = cur; p._nb = nb;
   }
   html += '</div>' + nav('commandes') + '</div>';
@@ -777,12 +824,13 @@ function cmdText() {
   });
   return { n: lines.length, text: 'Bonjour' + (f && f.contact ? ' ' + f.contact : '') + ',\n\nVoici une commande pour ' + (M.reg.entreprise || 'EURL Da Costa') + ' :\n' + lines.join('\n') + '\n\nMerci,\n' + (u ? u.nom : '') + '\n' + (M.reg.entreprise || 'EURL Da Costa'), four: f };
 }
-A.cmdSend = function (d) {
+A.cmdSend = function () {
   var c = cmdText();
   if (!c.n) { toast('Coche au moins un produit'); return; }
-  if (d.how === 'mail') { location.href = 'mailto:' + encodeURIComponent(c.four && c.four.email || '') + '?subject=' + encodeURIComponent('Commande ' + (D().reg.entreprise || 'EURL Da Costa')) + '&body=' + encodeURIComponent(c.text); return; }
-  if (d.how === 'wa') { var tel = waNumber(c.four && c.four.tel); window.open('https://wa.me/' + tel + '?text=' + encodeURIComponent(c.text), '_blank'); return; }
-  copyText(c.text);
+  var f = c.four;
+  openMsg({ title: 'Commande' + (f ? ' ' + f.nom : ''), sub: c.n + ' produit' + (c.n > 1 ? 's' : '') + '. Vérifie le message, puis choisis comment l\'envoyer.',
+    text: c.text, tel: f && f.tel, email: f && f.email, subject: 'Commande ' + (D().reg.entreprise || 'EURL Da Costa'),
+    hint: f && !f.tel && !f.email ? 'Pas de téléphone ni de mail pour ce fournisseur : WhatsApp et SMS te demanderont le contact.' : '' });
 };
 function waNumber(t) { t = String(t || '').replace(/[^\d+]/g, ''); if (!t) return ''; if (t[0] === '+') return t.slice(1); if (t.indexOf('00') === 0) return t.slice(2); if (t[0] === '0') return '33' + t.slice(1); return t; }
 function copyText(t) {
@@ -791,6 +839,35 @@ function copyText(t) {
   else { fallbackCopy(t); ok(); }
 }
 function fallbackCopy(t) { var ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); } catch (e) {} ta.remove(); }
+
+
+/* ================= aperçu d'un message avant envoi (commandes, invitations) ================= */
+var MSG = null;
+function openMsg(o) {
+  MSG = o;
+  var share = !!navigator.share;
+  var btn = function (how, icon, label, off) {
+    return '<button class="' + (off ? 'off' : '') + '" data-a="msgSend" data-how="' + how + '">' + ic(icon) + label + '</button>';
+  };
+  openSheet('<h3>' + esc(o.title) + '</h3>' + (o.sub ? '<p>' + esc(o.sub) + '</p>' : '') +
+    '<label class="flabel" for="msgText" style="display:block;margin-bottom:6px">Message <span class="help" style="font-weight:500;color:var(--muted)">(tu peux le modifier)</span></label>' +
+    '<textarea id="msgText" class="inp" rows="9" style="font-size:16px;line-height:1.35">' + esc(o.text) + '</textarea>' +
+    '<div class="contact-actions" style="grid-template-columns:repeat(' + (share ? 5 : 4) + ',1fr);margin-top:12px">' +
+    btn('wa', 'chat', 'WhatsApp') + btn('sms', 'phone', 'SMS') + btn('mail', 'mail', 'Mail') +
+    (share ? btn('share', 'share', 'Autre…') : '') + btn('copy', 'copy', 'Copier') + '</div>' +
+    (o.hint ? '<p style="font-size:13px;margin:0">' + esc(o.hint) + '</p>' : ''));
+}
+A.msgSend = function (d) {
+  var o = MSG; if (!o) return;
+  var el = document.getElementById('msgText'), t = el ? el.value : o.text;
+  if (d.how === 'copy') { copyText(t); return; }
+  if (d.how === 'share') { navigator.share({ text: t }).catch(function () {}); return; }
+  var url = '';
+  if (d.how === 'wa') url = 'https://wa.me/' + waNumber(o.tel) + '?text=' + encodeURIComponent(t);
+  if (d.how === 'sms') url = 'sms:' + String(o.tel || '').replace(/[^\d+]/g, '') + '?body=' + encodeURIComponent(t);
+  if (d.how === 'mail') url = 'mailto:' + encodeURIComponent(o.email || '') + '?subject=' + encodeURIComponent(o.subject || '') + '&body=' + encodeURIComponent(t);
+  if (d.how === 'wa') window.open(url, '_blank'); else location.href = url;
+};
 
 /* ================= historique ================= */
 SCREENS.histo = function (p) {
@@ -804,10 +881,11 @@ SCREENS.histo = function (p) {
   });
   var lim = p.lim || 100;
   var chips = [['all', 'Tout'], ['S', 'Sorties'], ['E', 'Entrées'], ['A', 'Corrections'], ['me', 'Les miens']];
-  return '<div class="screen">' + head({ back: VIEW.r === 'histo' && !isPatron() ? false : true, title: 'Historique', extra: searchBox('hq', 'Chercher : produit, chantier, personne…', p.q) }) + syncBar() +
-    '<div class="scroll" style="padding-top:0"><div class="chips">' + chips.map(function (c) { return '<button class="chip ' + (f === c[0] ? 'on' : '') + '" data-a="hf" data-f="' + c[0] + '">' + c[1] + '</button>'; }).join('') + '</div>' +
+  return '<div class="screen">' + head({ back: isPatron(), title: 'Historique', extra: searchBox('hq', 'Chercher : produit, chantier, personne…', p.q),
+    below: '<div class="chips">' + chips.map(function (c) { return '<button class="chip ' + (f === c[0] ? 'on' : '') + '" data-a="hf" data-f="' + c[0] + '">' + c[1] + '</button>'; }).join('') + '</div>' }) + syncBar() +
+    '<div class="scroll" style="padding-top:4px">' +
     '<div class="card" style="padding-top:4px;padding-bottom:4px" id="hlist">' + (list.length ? list.slice(0, lim).map(mvRow).join('') : '<div class="empty">Aucun mouvement</div>') + '</div>' +
-    (list.length > lim ? '<button class="btn light" data-a="hmore">Voir plus</button>' : '') + '</div>' + (isPatron() ? '' : nav('histo')) + '</div>';
+    (list.length > lim ? '<button class="btn light" data-a="hmore">Voir plus</button>' : '') + '</div>' + nav(isPatron() ? 'inventaire' : 'histo') + '</div>';
 };
 A.hf = function (d) { VIEW.p.f = d.f; VIEW.p.lim = 100; saveView(); render(false); };
 A.hmore = function () { VIEW.p.lim = (VIEW.p.lim || 100) + 100; saveView(); render(false); };
@@ -815,17 +893,31 @@ var HQ_T = null;
 I.hq = function (v) { VIEW.p.q = v; saveView(); clearTimeout(HQ_T); HQ_T = setTimeout(function () { var y = window.scrollY; var a = document.activeElement; render(false); var inp = document.querySelector('[data-i="hq"]'); if (inp && a && a.dataset && a.dataset.i === 'hq') { inp.focus(); inp.setSelectionRange(v.length, v.length); } window.scrollTo(0, y); }, 250); };
 
 /* ================= inventaire et PDF ================= */
+function valeurStock() {
+  var M = D(), val = 0, sansPrix = 0, avecStock = 0;
+  M.prods.forEach(function (x) { var q = M.stock[x.id] || 0; if (q <= 0) return; avecStock++; var pr = prixRef(x.id); if (pr) val += pr.prix * q; else sansPrix++; });
+  return { val: val, sansPrix: sansPrix, avecStock: avecStock };
+}
+/** Onglet Stock, patron seulement : la valeur du stock en un coup d'œil. */
+function valeurBanner() {
+  if (!isPatron()) return '';
+  var V = valeurStock();
+  return '<button class="valbar" data-a="nav" data-r="inventaire"><span class="grow"><span class="vl">Valeur du stock</span><b>' + fe(V.val) + ' <small>HT</small></b></span>' +
+    (V.sansPrix ? '<span class="badge bas">' + V.sansPrix + ' sans prix</span>' : '') + ic('chev') + '</button>';
+}
 SCREENS.inventaire = function (p) {
   if (!isPatron()) return SCREENS.home();
   var M = D();
   if (!p.date) p.date = todayIsoDate();
   if (p.prix === undefined) p.prix = true;
-  var val = 0, sansPrix = 0, avecStock = 0;
-  M.prods.forEach(function (x) { var q = M.stock[x.id] || 0; if (q <= 0) return; avecStock++; var pr = prixRef(x.id); if (pr) val += pr.prix * q; else sansPrix++; });
+  var V = valeurStock(), val = V.val, sansPrix = V.sansPrix, avecStock = V.avecStock;
   var inv = M.invEnCours, nbC = inv ? Object.keys(M.comptes).length : 0;
-  var html = '<div class="screen">' + head({ back: false, title: 'Inventaire', sub: 'Valeur du stock, PDF pour le comptable et recomptage' }) + syncBar() + '<div class="scroll">';
+  var mois = todayIsoDate().slice(0, 7), nbF = M.factures.length, nbFm = M.factures.filter(function (f) { return String(f.rangee || f.date || '').slice(0, 7) === mois; }).length;
+  var html = '<div class="screen">' + head({ back: false, title: 'Inventaire', sub: 'Le bureau : valeur, historique, factures, PDF comptable' }) + syncBar() + '<div class="scroll">';
   html += '<div class="card"><div class="card-title"><h2>Valeur du stock aujourd\'hui</h2></div><div style="font-family:var(--cond);font-weight:800;font-size:34px;color:var(--navy)">' + fe(val) + ' <span style="font-size:18px">HT</span></div>' +
     (sansPrix ? '<button class="link" data-a="stockFilter" data-f="noprice" style="text-align:left">' + sansPrix + ' produit' + (sansPrix > 1 ? 's' : '') + ' en stock sans prix : les compléter ›</button>' : '<span class="s" style="color:var(--muted);font-size:14px">' + avecStock + ' produits en stock, tous avec un prix</span>') + '</div>';
+  html += '<div class="desk"><button class="desk-tile" data-a="go" data-r="histo"><span class="dt-ic navy">' + ic('history') + '</span><b>Historique</b><span>entrées, sorties, corrections</span></button>' +
+    '<button class="desk-tile" data-a="go" data-r="factures"><span class="dt-ic green">' + ic('file') + '</span><b>Factures</b><span>' + (nbF ? nbF + ' rangée' + (nbF > 1 ? 's' : '') + ' · ' + nbFm + ' ce mois' : 'aucune pour l\'instant') + '</span></button></div>';
   html += '<div class="card"><div class="card-title"><h2>PDF pour le comptable</h2></div>' +
     '<div class="field" style="margin:8px 0"><label for="pdate">État du stock au</label><input id="pdate" type="date" class="inp" data-c="pdate" value="' + esc(p.date) + '" max="' + todayIsoDate() + '"></div>' +
     '<button class="opt" data-a="ptog" data-k="prix"><div class="grow"><b style="font-size:15px">Prix et valeur</b><span class="s">prix d\'achat HT et valeur par ligne</span></div><span class="switch ' + (p.prix ? 'on' : '') + '"></span></button>' +
@@ -947,18 +1039,27 @@ SCREENS.reglages = function () {
   var M = D(), patron = isPatron(), u = me();
   var lastTxt = SYNC.last ? (Date.now() - SYNC.last < 90000 ? 'à l\'instant' : 'il y a ' + Math.round((Date.now() - SYNC.last) / 60000) + ' min') : 'jamais';
   var html = '<div class="screen">' + head({ title: 'Réglages' }) + '<div class="scroll nonav">';
+  html += '<div class="card mecard"><span class="who-av">' + initial(u.nom) + '</span><div class="grow"><b>' + esc(u.nom) + '</b><span>' + (patron ? 'Patron' : 'Salarié') + ' · connecté sur ce téléphone</span></div>' +
+    '<button class="small-btn" data-a="logout2">' + ic('logout') + 'Changer</button></div>';
   if (patron) {
-    html += '<div class="card"><div class="card-title"><h2>Entreprise</h2></div>' +
-      '<div class="field" style="margin-top:8px"><label for="rnom">Nom</label><input id="rnom" class="inp" data-c="reg" data-k="entreprise" value="' + esc(M.reg.entreprise || '') + '"></div>' +
-      '<div class="field" style="margin-bottom:4px"><label for="rmail">Mail du comptable</label><input id="rmail" class="inp" type="email" inputmode="email" data-c="reg" data-k="emailComptable" placeholder="comptable@exemple.fr" value="' + esc(M.reg.emailComptable || '') + '"></div></div>';
-    html += '<div class="list" style="margin-bottom:14px">' +
-      menuRow('equipe', 'users', 'Équipe', M.usersActifs.length + ' personne' + (M.usersActifs.length > 1 ? 's' : '') + ' · ajouter ou retirer un salarié') +
-      menuRow('fours', 'truck', 'Fournisseurs', M.foursActifs.length + ' fournisseurs · contacts, mails, téléphones') +
-      menuRow('fams', 'folder', 'Familles de produits', M.fams.length + ' familles') +
-      menuRow('histo', 'history', 'Historique des mouvements', M.moves.length + ' mouvements') + '</div>';
+    html += '<div class="grp">L\'entreprise</div><div class="list" style="margin-bottom:14px">' +
+      menuRow('entreprise', 'home', 'Entreprise', esc(M.reg.entreprise || 'Nom') + (M.reg.emailComptable ? ' · comptable : ' + esc(M.reg.emailComptable) : ' · mail du comptable')) +
+      menuRow('equipe', 'users', 'Équipe', M.usersActifs.length + ' personne' + (M.usersActifs.length > 1 ? 's' : '') + ' · inviter un salarié') +
+      menuRow('fours', 'truck', 'Fournisseurs', M.foursActifs.length + ' fournisseurs · contacts, prix comparés') +
+      menuRow('fams', 'folder', 'Familles de produits', M.fams.length + ' familles') + '</div>';
   } else {
-    html += '<div class="list" style="margin-bottom:14px">' + menuRow('fours', 'truck', 'Fournisseurs', 'contacts, mails, téléphones') + '</div>';
+    html += '<div class="list" style="margin-bottom:14px">' + menuRow('fours', 'truck', 'Fournisseurs', 'Téléphones et contacts') + '</div>';
   }
+  html += '<div class="grp">L\'appli</div>';
+  if (patron) {
+    var fi = FINFO;
+    html += '<div class="card"><div class="card-title"><h2>Factures enregistrées</h2><span class="s" style="color:var(--muted);font-size:14px">' + (fi ? fi.n + ' fichier' + (fi.n > 1 ? 's' : '') : '…') + '</span></div>' +
+      (fi ? '<div class="progress"><i style="width:' + Math.max(1, Math.min(100, fi.driveLimite ? Math.round(fi.driveUtilise * 100 / fi.driveLimite) : 0)) + '%"></i></div>' +
+        '<p style="font-size:13px;color:var(--muted);margin:8px 0 0">' + fmo(fi.octets) + ' de factures' + (fi.driveLimite ? ' · Google Drive : ' + fgo(fi.driveUtilise) + ' utilisés sur ' + fgo(fi.driveLimite) : '') + '. Rangées dans le dossier « Factures » à côté du Google Sheet.</p>'
+        : '<p id="finfo" style="font-size:13px;color:var(--muted);margin:4px 0 0">Calcul de la place utilisée…</p>') + '</div>';
+  }
+  if (typeof notifCard === 'function') html += notifCard();
+  if (patron && typeof voixCard === 'function') html += voixCard();
   html += '<div class="card"><div class="card-title"><h2>Synchronisation</h2>' + (SYNC.err ? '<span class="badge rupt">problème</span>' : OUTBOX.length ? '<span class="badge bas">en cours</span>' : '<span class="badge ok">à jour</span>') + '</div>' +
     '<div class="kv"><span>Dernier échange avec le Google Sheet</span><span>' + lastTxt + '</span></div>' +
     '<div class="kv"><span>Modifications en attente</span><span>' + OUTBOX.length + '</span></div>' +
@@ -968,10 +1069,28 @@ SCREENS.reglages = function () {
     '<div class="btn-row" style="margin-top:10px"><button class="btn light" data-a="testCnx">Tester la connexion</button>' +
     (patron && SYNC.sheetUrl ? '<a class="btn light" href="' + esc(SYNC.sheetUrl) + '" target="_blank" rel="noopener">Ouvrir le Sheet</a>' : '<button class="btn light" data-a="retry">Synchroniser</button>') + '</div>' +
     '<p id="cnx" style="font-size:13px;color:var(--muted);margin:8px 0 0"></p></div>';
-  html += '<div class="list">' + '<button class="row" data-a="logout2">' + ic('logout') + '<div class="grow"><span class="t">Changer d\'utilisateur</span><span class="s">Connecté : ' + esc(u.nom) + '</span></div></button></div>' +
-    '<p style="text-align:center;color:var(--muted);font-size:13px;margin-top:20px">Stock Da Costa' + (IS_TEST ? ' · <b style="color:#B45309">VERSION TEST</b>' : '') + ' · appli ' + APP_VERSION + (SYNC.version ? ' · script ' + esc(SYNC.version) : '') + '</p>';
+  html += '<p style="text-align:center;color:var(--muted);font-size:13px;margin-top:20px">Stock Da Costa' + (IS_TEST ? ' · <b style="color:#B45309">VERSION TEST</b>' : '') + ' · appli ' + APP_VERSION + (SYNC.version ? ' · script ' + esc(SYNC.version) : '') + '</p>';
   html += '</div></div>';
+  if (patron && !FINFO) loadFinfo();
   return html;
+};
+/** Place utilisée par les factures (demandée au script quand on ouvre Réglages). */
+var FINFO = null, FINFO_BUSY = false;
+function loadFinfo() {
+  if (FINFO_BUSY || !navigator.onLine) return; FINFO_BUSY = true;
+  call('fichiersInfo', [CFG.code], 60000).then(function (r) { FINFO = r; FINFO_BUSY = false; if (VIEW.r === 'reglages') render(false); })
+    .catch(function (e) { FINFO_BUSY = false; var el = document.getElementById('finfo'); if (el) el.textContent = 'Place utilisée : indisponible (' + e.message + ').'; });
+}
+function fmo(o) { o = num(o); return o < 1e6 ? Math.max(1, Math.round(o / 1e3)) + ' Ko' : (o / 1e6).toFixed(o < 1e7 ? 1 : 0).replace('.', ',') + ' Mo'; }
+function fgo(o) { o = num(o); return (o / 1e9).toFixed(o < 1e10 ? 1 : 0).replace('.', ',') + ' Go'; }
+/* fiche Entreprise (nom, mail du comptable) */
+SCREENS.entreprise = function () {
+  if (!isPatron()) return SCREENS.reglages();
+  var M = D();
+  return '<div class="screen">' + head({ title: 'Entreprise' }) + '<div class="scroll nonav"><div class="card">' +
+    '<div class="field" style="margin-top:8px"><label for="rnom">Nom</label><input id="rnom" class="inp" data-c="reg" data-k="entreprise" value="' + esc(M.reg.entreprise || '') + '"></div>' +
+    '<div class="field" style="margin-bottom:4px"><label for="rmail">Mail du comptable</label><input id="rmail" class="inp" type="email" inputmode="email" data-c="reg" data-k="emailComptable" placeholder="comptable@exemple.fr" value="' + esc(M.reg.emailComptable || '') + '"></div>' +
+    '</div><p style="font-size:13px;color:var(--muted);margin:4px 4px 0">Le mail du comptable sert pour envoyer le PDF d\'inventaire et les factures.</p></div></div>';
 };
 function menuRow(r, icon, t, s) { return '<button class="row" data-a="go" data-r="' + r + '">' + ic(icon) + '<div class="grow"><span class="t">' + t + '</span><span class="s">' + s + '</span></div>' + ic('chev') + '</button>'; }
 C.reg = function (v, el) { commit(put('Reglages', { id: el.dataset.k, valeur: v.trim() })); toast('Enregistré'); };
@@ -990,19 +1109,56 @@ SCREENS.equipe = function () {
   var M = D();
   return '<div class="screen">' + head({ title: 'Équipe' }) + '<div class="scroll nonav"><div class="list">' + M.users.map(function (u) {
     return '<button class="row" data-a="editUser" data-id="' + u.id + '" style="' + (u.actif === '0' ? 'opacity:.55' : '') + '"><span class="avatar" style="margin:0;background:' + (u.role === 'patron' ? 'var(--navy)' : 'var(--gold)') + ';color:' + (u.role === 'patron' ? '#fff' : 'var(--navy)') + ';display:flex;align-items:center;justify-content:center">' + initial(u.nom) + '</span>' +
-      '<div class="grow"><span class="t">' + esc(u.nom) + '</span><span class="s">' + (u.role === 'patron' ? 'Patron' : 'Salarié') + (u.actif === '0' ? ' · ne fait plus partie de l\'équipe' : u.pin ? '' : ' · code pas encore choisi') + '</span></div>' + ic('chev') + '</button>';
+      '<div class="grow"><span class="t">' + esc(u.nom + (u.nomFamille ? ' ' + u.nomFamille : '')) + '</span><span class="s">' + (u.role === 'patron' ? 'Patron' : 'Salarié') + (u.tel ? ' · ' + esc(u.tel) : '') + (u.actif === '0' ? ' · ne fait plus partie de l\'équipe' : u.pin ? '' : ' · code pas encore choisi') + '</span></div>' + ic('chev') + '</button>';
   }).join('') + '</div><p style="font-size:13px;color:var(--muted);margin:12px 2px">Chaque personne choisit son code à 4 chiffres la première fois qu\'elle ouvre l\'appli sur son téléphone.</p></div>' +
     '<div class="bottom-bar"><button class="btn" data-a="newUser">' + ic('plus') + 'Ajouter un salarié</button></div></div>';
 };
-A.newUser = function () { go('user', { f: { isNew: true, nom: '', role: 'salarie' } }); };
-A.editUser = function (d) { var u = D().user[d.id]; go('user', { f: { isNew: false, id: u.id, nom: u.nom, role: u.role || 'salarie' } }); };
+A.newUser = function () { go('user', { f: { isNew: true, nom: '', nomFamille: '', tel: '', role: 'salarie' } }); };
+function userForm(u) { return { isNew: false, id: u.id, nom: u.nom, nomFamille: u.nomFamille || '', tel: u.tel || '', role: u.role || 'salarie' }; }
+A.editUser = function (d) { go('user', { f: userForm(D().user[d.id]) }); };
+function appLink() { return location.origin + location.pathname.replace(/index\.html$/, ''); }
+function inviteText(u, lien) {
+  var boss = me() ? me().nom : 'Jimmy';
+  return 'Salut ' + u.nom + ' ! C\'est ' + boss + ' 👋\n\n' +
+    'J\'ai mis en place une appli pour gérer le stock de l\'atelier. Installe-la sur ton téléphone avec ce lien (il est personnel, ne le transfère à personne) :\n' + (lien || appLink()) + '\n\n' +
+    '1. Ouvre le lien et appuie sur « Installer » (sur iPhone : bouton Partager puis « Sur l\'écran d\'accueil »).\n' +
+    '2. Choisis ton prénom et invente ton code à 4 chiffres.\n\n' +
+    'Ensuite c\'est simple : quand tu prends du matériel, tu fais SORTIE. Quand tu ranges une livraison, tu fais ENTRÉE.\n\nMerci !';
+}
+/** Invitation = lien PERSONNEL (son code d'accès est caché dedans). `nouveau` : coupe l'ancien accès et en refait un. */
+function openInvite(u, nouveau) {
+  if (!u) return;
+  toast('Préparation du lien…', 'Lien personnel de ' + u.nom);
+  var essai = function (n) {
+    return flush().then(function () { return call('jeton', [CFG.code, { id: u.id, nouveau: !!nouveau }], 30000); }).catch(function (e) {
+      if (n < 4 && /inconnue/i.test(e.message || '')) return new Promise(function (r) { setTimeout(r, 1500); }).then(function () { return essai(n + 1); });   // pas encore arrivé dans le Sheet
+      throw e;
+    });
+  };
+  essai(0).then(function (r) {
+    var lien = appLink() + '#cle=' + r.jeton;
+    openMsg({ title: 'Inviter ' + u.nom, sub: 'Son lien est personnel : il ne marche que pour ' + u.nom + '. Retirer ' + u.nom + ' de l\'équipe coupe son accès.',
+      text: inviteText(u, lien), tel: u.tel, subject: 'Appli du stock', hint: u.tel ? '' : 'Ajoute son numéro pour que WhatsApp et SMS s\'ouvrent directement sur sa conversation.' });
+  }).catch(function (e) { toast('Lien impossible pour le moment', e.message || 'Il faut être connecté à Internet'); });
+}
+A.newAccess = function () {
+  var u = D().user[VIEW.p.f.id]; if (!u) return;
+  ask({ title: 'Couper l\'accès actuel de ' + u.nom + ' ?', text: 'Son téléphone n\'aura plus accès (téléphone perdu, changé…). Tu pourras lui envoyer un nouveau lien.', ok: 'Couper et refaire un lien', danger: true })
+    .then(function (ok) { if (ok) openInvite(u, true); });
+};
+A.invite = function () { var u = D().user[VIEW.p.f.id]; if (u) openInvite(u); };
 SCREENS.user = function (p) {
   var f = p.f, u = f.isNew ? null : D().user[f.id];
   return '<div class="screen">' + head({ title: f.isNew ? 'Nouveau salarié' : esc(f.nom || 'Personne') }) + '<div class="scroll nonav">' +
-    '<div class="field"><label for="unom">Prénom</label><input id="unom" class="inp" data-i="uf" data-k="nom" autocomplete="off" value="' + esc(f.nom) + '" placeholder="ex. Kévin"></div>' +
+    '<div class="field"><label for="unom">Prénom</label><input id="unom" class="inp" data-i="uf" data-k="nom" autocomplete="off" autocapitalize="words" value="' + esc(f.nom) + '" placeholder="ex. Mathieu"></div>' +
+    '<div class="field"><label for="unf">Nom <span class="help">(facultatif)</span></label><input id="unf" class="inp" data-i="uf" data-k="nomFamille" autocomplete="off" autocapitalize="words" value="' + esc(f.nomFamille) + '"></div>' +
+    '<div class="field"><label for="utel">Téléphone <span class="help">(pour lui envoyer l\'invitation)</span></label><input id="utel" class="inp" type="tel" inputmode="tel" data-i="uf" data-k="tel" autocomplete="off" value="' + esc(f.tel) + '" placeholder="ex. 06 12 34 56 78"></div>' +
     '<div class="field"><span class="flabel">Rôle</span><div class="chips wrap"><button class="chip ' + (f.role === 'salarie' ? 'on' : '') + '" data-a="ufRole" data-v="salarie">Salarié : entrées et sorties</button>' +
     '<button class="chip ' + (f.role === 'patron' ? 'on' : '') + '" data-a="ufRole" data-v="patron">Patron : tout l\'accès</button></div></div>' +
-    (u ? '<div class="card"><div class="kv"><span>Code</span><span>' + (u.pin ? 'choisi' : 'à choisir au prochain lancement') + '</span></div></div>' +
+    (u && u.actif !== '0' ? '<button class="btn" style="margin-bottom:10px" data-a="invite">' + ic('share') + 'Envoyer son lien d\'accès</button>' : '') +
+    (u && u.actif !== '0' && u.acces ? '<button class="btn light" style="margin-bottom:14px" data-a="newAccess">' + ic('x') + 'Couper son accès actuel (téléphone perdu…)</button>' : '') +
+    (u ? '<div class="card"><div class="kv"><span>Accès</span><span>' + (u.actif === '0' ? 'coupé' : u.acces ? 'lien personnel envoyé' : 'pas encore de lien') + '</span></div><div class="kv"><span>Code</span><span>' + (u.pin ? 'choisi' : 'à choisir au prochain lancement') + '</span></div></div>' +
+      (typeof notifUserCard === 'function' ? notifUserCard(u) : '') +
       (u.pin ? '<button class="btn light" style="margin-bottom:10px" data-a="userPin">Réinitialiser son code</button>' : '') +
       (u.id !== ME ? (u.actif === '0' ? '<button class="btn light" data-a="userActif" data-v="1">Remettre dans l\'équipe</button>' : '<button class="btn danger" data-a="userActif" data-v="0">' + ic('trash') + 'Retirer de l\'équipe</button>') : '') : '') +
     '</div><div class="bottom-bar"><button class="btn green" data-a="saveUser">' + (f.isNew ? 'Ajouter' : 'Enregistrer') + '</button></div></div>';
@@ -1014,9 +1170,18 @@ A.saveUser = function () {
   var f = VIEW.p.f, nom = (f.nom || '').trim();
   if (!nom) { toast('Il manque le prénom'); return; }
   if (!f.isNew && f.role !== 'patron' && D().user[f.id].role === 'patron' && !patronsActifs(f.id)) { toast('Il faut garder au moins un patron'); return; }
-  if (f.isNew) commit(put('Utilisateurs', { id: uid('u'), nom: nom, role: f.role, pin: '', actif: '1', ordre: String(D().users.length + 1) }));
-  else commit(put('Utilisateurs', { id: f.id, nom: nom, role: f.role }));
-  toast(f.isNew ? 'Salarié ajouté' : 'Enregistré', f.isNew ? nom + ' choisira son code à la première connexion' : nom);
+  var extra = { nomFamille: (f.nomFamille || '').trim(), tel: (f.tel || '').trim() };
+  if (f.isNew) {
+    var nid = uid('u');
+    commit(put('Utilisateurs', Object.assign({ id: nid, nom: nom, role: f.role, pin: '', actif: '1', ordre: String(D().users.length + 1) }, extra)));
+    toast('Salarié ajouté', nom + ' choisira son code à la première connexion');
+    go('user', { f: userForm(D().user[nid]) }, { replace: true });
+    AFTER.push(function () { openInvite(D().user[nid]); });
+    render(false);
+    return;
+  }
+  commit(put('Utilisateurs', Object.assign({ id: f.id, nom: nom, role: f.role }, extra)));
+  toast('Enregistré', nom);
   back();
 };
 A.userPin = function () {
@@ -1040,7 +1205,7 @@ SCREENS.fours = function (p) {
   var list = M.foursActifs.filter(function (f) { return !nq || norm(f.nom + ' ' + f.contact).indexOf(nq) >= 0; });
   return '<div class="screen">' + head({ title: 'Fournisseurs', extra: searchBox('fq', 'Chercher un fournisseur…', p.q) }) + '<div class="scroll nonav"><div class="list" id="flist">' +
     (list.length ? list.map(function (f) {
-      return '<button class="row" data-a="openFour" data-id="' + f.id + '"><span class="avatar" style="margin:0;background:var(--navy-soft);color:var(--navy);display:flex;align-items:center;justify-content:center">' + initial(f.nom) + '</span><div class="grow"><span class="t">' + esc(f.nom) + '</span><span class="s">' +
+      return '<button class="row" data-a="openFour" data-id="' + f.id + '">' + (f.logo ? '<span class="flogo"><img src="' + esc(f.logo) + '" alt=""></span>' : '<span class="avatar" style="margin:0;background:var(--navy-soft);color:var(--navy);display:flex;align-items:center;justify-content:center">' + initial(f.nom) + '</span>') + '<div class="grow"><span class="t">' + esc(f.nom) + '</span><span class="s">' +
         esc([f.contact, f.tel].filter(Boolean).join(' · ') || 'coordonnées à compléter') + ' · ' + (count[f.id] || 0) + ' produit' + ((count[f.id] || 0) > 1 ? 's' : '') + '</span></div>' + ic('chev') + '</button>';
     }).join('') : '<div class="empty">Aucun fournisseur</div>') + '</div></div>' +
     (isPatron() ? '<div class="bottom-bar"><button class="btn" data-a="newFour">' + ic('plus') + 'Nouveau fournisseur</button></div>' : '') + '</div>';
@@ -1062,15 +1227,23 @@ SCREENS.four = function (p) {
   rows.sort(function (a, b) { return cmp(a.p.nom, b.p.nom); });
   var addr = f.adresse ? 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(f.adresse) : '';
   var html = '<div class="screen">' + head({ title: esc(f.nom), sub: esc(f.contact || ''), right: patron ? '<button class="icon-btn" data-a="editFour" aria-label="Modifier">' + ic('edit') + '</button>' : '' }) +
-    '<div class="scroll nonav"><div class="contact-actions">' +
-    '<a href="' + (f.tel ? 'tel:' + esc(f.tel.replace(/\s/g, '')) : '#') + '" class="' + (f.tel ? '' : 'off') + '">' + ic('phone') + 'Appeler</a>' +
-    '<a href="' + (f.email ? 'mailto:' + esc(f.email) : '#') + '" class="' + (f.email ? '' : 'off') + '">' + ic('mail') + 'Mail</a>' +
-    '<a href="' + (addr || '#') + '" target="_blank" rel="noopener" class="' + (addr ? '' : 'off') + '">' + ic('map') + 'Itinéraire</a></div>' +
+    '<div class="scroll nonav">' + (f.logo ? '<div class="four-logo"><img src="' + esc(f.logo) + '" alt="Logo ' + esc(f.nom) + '"></div>' : '') +
+    // barre d'actions : reste collée sous l'en-tête quand on fait défiler les produits
+    '<div class="act-stick" data-under-head><div class="contact-actions four-acts">' +
+    '<a href="' + (f.tel ? 'tel:' + esc(f.tel.replace(/\s/g, '')) : '#') + '" class="ca-call ' + (f.tel ? '' : 'off') + '">' + ic('phone') + 'Appeler</a>' +
+    '<button data-a="fourMsg" class="ca-msg ' + (f.tel ? '' : 'off') + '">' + ic('chat') + 'Message</button>' +
+    '<a href="' + (f.email ? 'mailto:' + esc(f.email) : '#') + '" class="ca-mail ' + (f.email ? '' : 'off') + '">' + ic('mail') + 'Mail</a>' +
+    '<a href="' + (addr || '#') + '" target="_blank" rel="noopener" class="ca-map ' + (addr ? '' : 'off') + '">' + ic('map') + 'Itinéraire</a></div></div>' +
     '<div class="card">' + kvLine('Contact', f.contact) + kvLine('Téléphone', f.tel) + kvLine('Mail', f.email) + kvLine('Adresse', f.adresse) + kvLine('Notes', f.notes) +
     (!f.contact && !f.tel && !f.email && !f.adresse ? '<div class="empty" style="padding:12px">Coordonnées à compléter' + (patron ? ' (crayon en haut)' : '') + '</div>' : '') + '</div>' +
     '<div class="sec-title"><span>Produits achetés ici (' + rows.length + ')</span></div>' + searchBox('fpq', 'Chercher un produit chez ' + f.nom + '…', p.q) +
     '<div class="card" style="padding-top:4px;padding-bottom:4px;margin-top:10px" id="fplist">' + fourProds(rows, patron) + '</div></div></div>';
   return html;
+};
+A.fourMsg = function () {
+  var f = D().four[VIEW.p.id]; if (!f) return;
+  openMsg({ title: 'Message à ' + f.nom, sub: f.contact ? 'Contact : ' + f.contact : '', tel: f.tel, email: f.email, subject: 'EURL Da Costa',
+    text: 'Bonjour' + (f.contact ? ' ' + f.contact : '') + ',\n\n' });
 };
 function fourProds(rows, patron) {
   if (!rows.length) return '<div class="empty" style="padding:16px">Aucun produit</div>';
@@ -1084,7 +1257,8 @@ function fourProds(rows, patron) {
 var FPQ_T = null;
 I.fpq = function (v) { VIEW.p.q = v; saveView(); clearTimeout(FPQ_T); FPQ_T = setTimeout(function () { var a = document.activeElement; var y = window.scrollY; render(false); var inp = document.querySelector('[data-i="fpq"]'); if (inp && a && a.dataset && a.dataset.i === 'fpq') { inp.focus(); inp.setSelectionRange(v.length, v.length); } window.scrollTo(0, y); }, 250); };
 function kvLine(k, v) { return v ? '<div class="kv"><span>' + k + '</span><span style="white-space:pre-line;max-width:65%">' + esc(v) + '</span></div>' : ''; }
-A.editFour = function () { var f = D().four[VIEW.p.id]; go('fourEdit', { f: { isNew: false, id: f.id, nom: f.nom, contact: f.contact || '', tel: f.tel || '', email: f.email || '', adresse: f.adresse || '', notes: f.notes || '' } }); };
+A.delLogo = function () { VIEW.p.f.logo = ''; VIEW.p.f.logoDel = true; saveView(); render(false); };
+A.editFour = function () { var f = D().four[VIEW.p.id]; go('fourEdit', { f: { isNew: false, id: f.id, logo: f.logo || '', nom: f.nom, contact: f.contact || '', tel: f.tel || '', email: f.email || '', adresse: f.adresse || '', notes: f.notes || '' } }); };
 SCREENS.fourEdit = function (p) {
   var f = p.f;
   var fld = function (k, label, type, ph, mode) {
@@ -1095,6 +1269,8 @@ SCREENS.fourEdit = function (p) {
     fld('nom', 'Nom', '', 'ex. Réseau Pro Montargis') + fld('contact', 'Contact <span class="help">(commercial, vendeur…)</span>', '', 'ex. Sébastien') +
     fld('tel', 'Téléphone', 'tel', 'ex. 02 38 00 00 00', 'tel') + fld('email', 'Mail', 'email', 'ex. agence@fournisseur.fr', 'email') +
     fld('adresse', 'Adresse', 'textarea', 'ex. ZA des Champs, 45200 Amilly') + fld('notes', 'Notes', 'textarea', 'ex. n° de compte client, horaires…') +
+    (!f.isNew && f.logo ? '<div class="field"><label>Logo <span class="help">(repris d\'une facture)</span></label><div class="four-logo" style="margin:0 0 8px">' + '<img src="' + esc(f.logo) + '" alt="Logo"></div>' +
+      '<button class="btn light" data-a="delLogo" style="margin-bottom:16px">' + ic('x') + 'Retirer le logo</button></div>' : '') +
     (f.isNew ? '' : '<button class="btn danger" data-a="delFour">' + ic('trash') + 'Supprimer ce fournisseur</button>') +
     '</div><div class="bottom-bar"><button class="btn green" data-a="saveFour">' + (f.isNew ? 'Ajouter' : 'Enregistrer') + '</button></div></div>';
 };
@@ -1103,7 +1279,9 @@ A.saveFour = function () {
   var f = VIEW.p.f, nom = (f.nom || '').trim();
   if (!nom) { toast('Il manque le nom'); return; }
   var id = f.isNew ? uid('f') : f.id;
-  commit(put('Fournisseurs', { id: id, nom: nom, contact: f.contact.trim(), tel: f.tel.trim(), email: f.email.trim(), adresse: f.adresse.trim(), notes: f.notes.trim(), actif: '1' }));
+  var row = { id: id, nom: nom, contact: f.contact.trim(), tel: f.tel.trim(), email: f.email.trim(), adresse: f.adresse.trim(), notes: f.notes.trim(), actif: '1' };
+  if (f.logoDel) row.logo = '';
+  commit(put('Fournisseurs', row));
   toast(f.isNew ? 'Fournisseur ajouté' : 'Enregistré', nom);
   if (f.isNew) go('four', { id: id }, { replace: true }); else back();
 };
@@ -1136,7 +1314,7 @@ A.delFam = function (d) { var f = D().fam[d.id]; ask({ title: 'Supprimer « ' + 
 /* ================= démarrage ================= */
 (function start() {
   try { history.replaceState({ r: 'boot', p: {} }, ''); } catch (e) {}
-  if (LOADED) { VIEW = { r: me() ? 'home' : 'login', p: {} }; saveView(); }
+  if (LOADED) { VIEW = { r: me() ? 'home' : 'login', p: {} }; saveView(); migrateNames(); }
   render(true);
   startSync();
   if ('serviceWorker' in navigator && window.isSecureContext) {
